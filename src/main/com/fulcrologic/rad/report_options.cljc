@@ -27,6 +27,20 @@
   `ao/style` on a column to override something like style."
   :com.fulcrologic.rad.report/columns)
 
+(def column-alignment
+  "ATTRIBUTE OPTION: A keyword or `(fn [report col-attr] )`.
+
+  Indicates the preferred alignment for the content of the attribute
+   when shown in a data column. This is a HINT to the renderer.
+
+   Typical supported values are: `:right`, `:left`, and `:center`.
+
+   See also `column-class` for an option that more directly targets general HTML layout.
+
+   WARNING: Using this and `column-class` at the same time may cause conflicts in an HTML renderer.
+   "
+  :com.fulcrologic.rad.report/column-alignment)
+
 (def column-class
   "ATTRIBUTE OPTION. The name of a CSS class (a string) to add to the `classes` of
   the HTML element that represents a column (f.ex. a `<td>` when rendering the report as a table).
@@ -166,10 +180,18 @@
    * `:type`: OPTIONAL. Defaults to :button. Rendering plugins define what types are supported.
    * `:style`: OPTIONAL. Defaults to :default. Rendering plugins define what styles are supported.
    * `:action`: OPTIONAL. A side-effecting `(fn [report-instance])`.
-   * `:label` : REQUIRED. A string or `(fn [report-instance row-props] string-or-element?)`.
+   * `:label` : REQUIRED. A string or `(fn [report-instance] string-or-element?)`. If it is an element then nothing
+                but the element is rendered, i.e. it needs to hand user interaction itself.
+                (For more customization, check whether your rendering plugin supports extra options, e.g. a report-row-button-renderer)
    * `:visible?` : OPTIONAL. Defaults to true. A boolean or `(fn [report-class-or-instance] boolean?)`.
       Indicates that the control should not be displayed (likely because it is an input you only intend to
       set via routing params). You must also omit it from `control-layout`.
+   * `:local?` : OPTIONAL. Defaults to false. Indicates that you want the control's value to be private/local to the report
+   * `:retain?` : OPTIONAL. Defaults to true. Indicate that you want the in-state value to be retained in cases where the
+   report re-appears (is routed to) without an explicit value for this parameter. This means that if neither the URL or routing event
+   has a value for the control, then any in-state value for it will be preferred over the default value; otherwise,
+   the default-value (or nil) will be used.
+
 
    Rendering plugins can expand this list of options as desired.
 
@@ -234,7 +256,7 @@
 
    * `:type`: OPTIONAL. Defaults to :button. Rendering plugins define what types are supported.
    * `:action`: REQUIRED. A side-effecting `(fn [report-instance row-props])`.
-   * `:label` : REQUIRED. A string or `(fn [report-instance row-props] string-or-element?)`.
+   * `:label` : REQUIRED. A string or `(fn [report-instance row-props control] string-or-element?)`.
    * `:disabled?` : OPTIONAL. A boolean or `(fn [report-instance row-props] boolean?)`.
    * `:visible?` : OPTIONAL. A boolean or `(fn [report-instance row-props] boolean?)`.
 
@@ -439,7 +461,17 @@
                         :inventory/unit-cost]}
    ```
 
-   which is what you'd set this option to on that attribute."
+   which is what you'd set this option to on that attribute.
+
+   Notice that the above will not normalize the data. That might be preferable for performance reasons. If you want the
+   data normalized then use `get-query` just as in component queries. For example in combination with `nc`:
+
+   ```
+   {:product/inventory (rc/get-query (rc/nc [:inventory/id ; remember to include the id for nc
+                                             :location/name
+                                             :inventory/quantity
+                                             :inventory/unit-cost]}
+   ```"
   :com.fulcrologic.rad.report/column-EQL)
 
 (def layout-style
@@ -532,3 +564,8 @@
 (def before-load
   "A UISM handler (fn [env] env') that will be run before loading the report's data."
   :com.fulcrologic.rad.report/before-load)
+
+(def track-in-url?
+  "Report option. Should the page number and other controls be tracked in the URL? Defaults to TRUE. Useful if embedding
+   a report into someething like a modal, where the URL parameters are not meant to affect or be modified by the content."
+  :com.fulcrologic.rad.report/track-in-url?)

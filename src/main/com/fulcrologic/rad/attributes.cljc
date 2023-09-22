@@ -9,6 +9,7 @@
     [com.fulcrologic.guardrails.core :refer [>defn => >def >fdef ?]]
     [com.fulcrologic.fulcro.algorithms.form-state :as fs]
     [com.fulcrologic.rad.ids :refer [new-uuid]]
+    [com.fulcrologic.rad.attributes-options :as ao]
     [com.fulcrologic.fulcro.components :as comp])
   #?(:clj
      (:import (clojure.lang IFn)
@@ -42,8 +43,10 @@
   (let [v (-> m
             (assoc ::type type)
             (assoc ::qualified-key kw))]
-    (when (and (= :ref type) (not (contains? m ::target)))
-      (log/warn "Reference attribute" kw "does not list a target ID. Resolver generation will not be accurate."))
+    (when (and (not= :ref type) (or (contains? m ::targets) (contains? m ::target)))
+      (log/warn "NON-Reference attribute" kw "was given referential target(s). This could cause errors in code that generates code from the attribute."))
+    (when (and (= :ref type) (not (contains? m ::targets)) (not (contains? m ::target)))
+      (log/warn "Reference attribute" kw "does not list target(s). Resolver generation will not be accurate."))
     #?(:clj  (registered-map (or (-> m meta :registration-key) kw) v)
        :cljs v)))
 
@@ -115,10 +118,13 @@
   [attrs]
   [::attributes => vector?]
   (reduce
-    (fn [outs {::keys [qualified-key type target]}]
-      (if (and target (#{:ref} type))
-        (conj outs {qualified-key [target]})
-        (conj outs qualified-key)))
+    (fn [outs {::keys [qualified-key type target targets]}]
+      (cond
+        (and (seq targets) (= :ref type)) (conj outs {qualified-key (into {}
+                                                                      (map (fn [t] [t [t]]))
+                                                                      targets)})
+        (and target (= :ref type)) (conj outs {qualified-key [target]})
+        :else (conj outs qualified-key)))
     []
     attrs))
 
@@ -176,12 +182,14 @@
 
    Otherwise returns false.
    "
-  [{::keys [required? valid?] :as attribute} value props k]
-  (let [non-empty-value? (and
-                           (not (nil? value))
+  [{::keys [required? type valid?] :as attribute} value props k]
+  (let [ref?             (= :ref type)
+        non-empty-value? (and
+                           (some? value)
+                           (or (not ref?) (not (empty? value)))
                            (or
                              (not (string? value))
-                             (not= 0 (count (str/trim value)))))]
+                             (pos? (count (str/trim value)))))]
     (or
       (and (nil? value) (not required?))
       (if valid?
@@ -196,18 +204,38 @@
     (map (fn [{::keys [qualified-key] :as a}] [qualified-key a]))
     attributes))
 
+(>defn entity-map
+  "Returns a map of qualified ID key -> the collection of attributes on entities that have that ID."
+  [attributes]
+  [::attributes => (s/map-of qualified-keyword? ::attributes)]
+  (reduce
+    (fn [acc attr]
+      (let [identities (ao/identities attr)]
+        (reduce
+          (fn [acc2 k]
+            (update acc2 k (fnil conj []) attr))
+          acc
+          identities)))
+    {}
+    attributes))
+
 (defn make-attribute-validator
   "Creates a Fulcro form-state validator function that can be used as a form validator for any form that contains
    the given `attributes`.
 
    A field is considered valid in this validator IF AND ONLY IF `attr/valid-value` returns true. See that
    function's docstring for how that interacts with the `ao/valid?` option of attributes.
+
+   If `include-refs?` is true (default false) then references will be included in the validation.
    "
-  [attributes]
-  (let [attribute-map (attribute-map attributes)]
-    (fs/make-validator
-      (fn [form k]
-        (valid-value? (get attribute-map k) (get form k) form k)))))
+  ([attributes]
+   (make-attribute-validator attributes false))
+  ([attributes include-refs?]
+   (let [attribute-map (attribute-map attributes)]
+     (fs/make-validator
+       (fn [form k]
+         (valid-value? (get attribute-map k) (get form k) form k))
+       {:validate-edges? include-refs?}))))
 
 (defn wrap-env
   "Build a (fn [env] env') that adds RAD attribute data to an env. If `base-wrapper` is supplied, then it will be called
