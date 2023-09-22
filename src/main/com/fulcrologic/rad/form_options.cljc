@@ -18,7 +18,7 @@
     [taoensso.timbre :as log]))
 
 (def id
-  "RForm option. EQUIRED: The *attribute* that will act as the primary key for this form."
+  "Form option. REQUIRED: The *attribute* that will act as the primary key for this form."
   :com.fulcrologic.rad.form/id)
 
 (def attributes
