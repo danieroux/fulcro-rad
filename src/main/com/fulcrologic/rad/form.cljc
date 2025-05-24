@@ -461,7 +461,12 @@
         form-ident [qualified-key coerced-id]]
     (when (and new? (not (ids/valid-uuid-string? id)))
       (log/error (comp/component-name form-class) "Invalid UUID string " id "used in route for new entity. The form may misbehave."))
-    (dr/route-deferred form-ident (fn [] (start-form! app coerced-id form-class route-params)))))
+    (dr/route-deferred form-ident
+      (fn []
+        ; com.fulcrologic.fulcro.routing.dynamic-routing/get-will-enter says will-enter must
+        ; be side-effect free - it will be called more than once. So we start the form only once.
+        (when-not (get-in (raw.app/current-state app) [::uism/asm-id form-ident])
+          (start-form! app coerced-id form-class route-params))))))
 
 (defn abandon-form!
   "Stop the state machine for the given form without warning. Does not reset the form or give any warnings: just exits the state machine.
