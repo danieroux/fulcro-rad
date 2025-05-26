@@ -486,6 +486,10 @@
       (uism/trigger! master-form form-ident :event/exit {}))
     true))
 
+(defn form-abandoned?
+  [current-state id]
+  (get-in current-state [::uism/asm-id id ::uism/local-storage :abandoned?] false))
+
 (defn form-allow-route-change [this]
   "Used as a form route target's :allow-route-change?"
   (let [id              (comp/get-ident this)
@@ -493,7 +497,7 @@
         read-only?      (?! (comp/component-options this ::read-only?) this)
         silent-abandon? (?! (comp/component-options this ::silent-abandon?) this)
         current-state   (raw.app/current-state this)
-        abandoned?      (get-in current-state [::uism/asm-id id ::uism/local-storage :abandoned?] false)
+        abandoned?      (form-abandoned? current-state id)
         dirty?          (and (not abandoned?) (fs/dirty? form-props))]
     (or silent-abandon? read-only? (not dirty?))))
 
@@ -1195,7 +1199,9 @@
                             Form       (uism/actor-class env :actor/form)
                             form-ident (uism/actor->ident env :actor/form)
                             {{:keys [started]} ::triggers} (some-> Form (comp/component-options))]
-                        (cond-> (uism/store env :options event-data)
+                        (cond-> (-> env
+                                  (uism/store :abandoned? false)
+                                  (uism/store :options event-data))
                           create? (start-create event-data)
                           (not create?) (start-edit event-data)
                           (fn? started) (started form-ident))))}
